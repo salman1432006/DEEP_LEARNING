@@ -1,0 +1,617 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>VisionPort | Intelligent Traffic Monitoring</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 25px;
+    background: #0b1422;
+    color: #eef5ff;
+    font-family: Arial, sans-serif;
+}
+
+main {
+    max-width: 1250px;
+    margin: auto;
+}
+
+h1 {
+    font-size: 30px;
+}
+
+h2 {
+    margin-top: 0;
+}
+
+.subtitle {
+    color: #9fb2c9;
+}
+
+.status {
+    color: #4be0a2;
+    margin: 18px 0;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.panel {
+    background: #142238;
+    border: 1px solid #2a405d;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+button {
+    background: #35cde0;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+input {
+    margin: 15px 0;
+    color: white;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.stat-card {
+    background: #0b192b;
+    border: 1px solid #29415f;
+    padding: 15px;
+    border-radius: 10px;
+}
+
+.stat-card h3 {
+    color: #9fc5ed;
+    font-size: 13px;
+    font-weight: normal;
+}
+
+.stat-card p {
+    font-size: 23px;
+    font-weight: bold;
+    color: #35cde0;
+    margin: 5px 0;
+    overflow-wrap: anywhere;
+}
+
+img, video {
+    width: 100%;
+    max-width: 100%;
+    margin-top: 15px;
+    border-radius: 10px;
+    background: #050a11;
+}
+
+.class-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.class-row {
+    background: #0b192b;
+    padding: 12px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+}
+
+pre {
+    color: #bdebf2;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.hidden {
+    display: none;
+}
+
+.error {
+    color: #ff7777;
+}
+
+@media(max-width: 800px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+</style>
+</head>
+
+<body>
+
+<main>
+
+<h1>VisionPort – Intelligent Traffic Monitoring</h1>
+
+<p class="subtitle">
+YOLO Vehicle Detection, Tracking and Traffic Analysis
+</p>
+
+<p id="apiStatus" class="status">Checking backend...</p>
+
+<div class="grid">
+
+<!-- IMAGE ANALYSIS -->
+
+<section class="panel">
+
+<h2>Traffic Image Analysis</h2>
+
+<input type="file" id="imageFile" accept="image/*">
+
+<br>
+
+<button id="imageButton" onclick="analyzeImage()">
+Analyze Image
+</button>
+
+<p id="imageMessage"></p>
+
+<img id="imageOutput" class="hidden" alt="Detection output">
+
+<div id="imageStats" class="stats-grid"></div>
+
+<pre id="imageReport"></pre>
+
+</section>
+
+
+<!-- VIDEO ANALYSIS -->
+
+<section class="panel">
+
+<h2>Traffic Video Analysis</h2>
+
+<input type="file" id="videoFile"
+accept="video/mp4,video/avi,video/quicktime,video/x-matroska">
+
+<br>
+
+<button id="videoButton" onclick="analyzeVideo()">
+Analyze Video
+</button>
+
+<p id="videoMessage">Select a traffic video.</p>
+
+<video id="videoOutput" controls playsinline class="hidden"></video>
+
+<h3>Traffic Statistics</h3>
+
+<div id="videoStats" class="stats-grid"></div>
+
+<h3>Vehicle Classification</h3>
+
+<div id="vehicleClasses" class="class-list"></div>
+
+<h3>Analysis Report</h3>
+
+<pre id="videoReport"></pre>
+
+</section>
+
+</div>
+
+
+<!-- CAMERA -->
+
+<section class="panel">
+
+<h2>Camera Capture</h2>
+
+<button onclick="captureCamera()">
+Capture Traffic Image
+</button>
+
+<pre id="cameraReport"></pre>
+
+</section>
+
+</main>
+
+
+<script>
+
+const API = window.location.origin;
+
+const $ = id => document.getElementById(id);
+
+
+// BACKEND CONNECTION
+
+async function checkBackend() {
+
+    try {
+
+        const response = await fetch(API + "/health");
+
+        if (!response.ok) {
+            throw new Error("Backend unavailable");
+        }
+
+        const data = await response.json();
+
+        $("apiStatus").textContent =
+            "● Backend Online | " +
+            data.model +
+            " | Video frame step: " +
+            data.video_frame_step;
+
+        $("apiStatus").className = "status";
+
+    } catch (error) {
+
+        $("apiStatus").textContent =
+            "● Backend Offline. Start FastAPI.";
+
+        $("apiStatus").className = "status error";
+
+    }
+
+}
+
+
+// STATISTICS DISPLAY
+
+function displayStats(containerId, statistics) {
+
+    const container = $(containerId);
+
+    container.innerHTML = "";
+
+    statistics.forEach(([title, value]) => {
+
+        const card = document.createElement("div");
+
+        card.className = "stat-card";
+
+        const heading = document.createElement("h3");
+
+        heading.textContent = title;
+
+        const number = document.createElement("p");
+
+        number.textContent =
+            value === null || value === undefined || value === ""
+            ? "N/A"
+            : value;
+
+        card.appendChild(heading);
+
+        card.appendChild(number);
+
+        container.appendChild(card);
+
+    });
+
+}
+
+
+// IMAGE ANALYSIS
+
+async function analyzeImage() {
+
+    const file = $("imageFile").files[0];
+
+    if (!file) {
+
+        alert("Please select a traffic image.");
+
+        return;
+
+    }
+
+    $("imageButton").disabled = true;
+
+    $("imageMessage").textContent = "Analyzing image...";
+
+    $("imageStats").innerHTML = "";
+
+    $("imageReport").textContent = "";
+
+    const formData = new FormData();
+
+    formData.append("file", file);
+
+    try {
+
+        const response = await fetch(API + "/detect/", {
+
+            method: "POST",
+
+            body: formData
+
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+
+            throw new Error(data.detail || "Image analysis failed");
+
+        }
+
+        $("imageOutput").src =
+            API + data.annotated_image + "?t=" + Date.now();
+
+        $("imageOutput").classList.remove("hidden");
+
+        displayStats("imageStats", [
+
+            ["Vehicles Detected", data.vehicle_count],
+
+            ["Traffic Density", data.density],
+
+            ["Traffic Signal", data.signal_status],
+
+            ["Inference Time",
+                data.inference_ms == null
+                ? null
+                : data.inference_ms + " ms"]
+
+        ]);
+
+        $("imageReport").textContent =
+            JSON.stringify(data.detections || [], null, 2);
+
+        $("imageMessage").textContent =
+            "Image analysis completed successfully.";
+
+    } catch (error) {
+
+        $("imageMessage").textContent =
+            "Error: " + error.message;
+
+    } finally {
+
+        $("imageButton").disabled = false;
+
+    }
+
+}
+
+
+// VIDEO ANALYSIS
+
+async function analyzeVideo() {
+
+    const file = $("videoFile").files[0];
+
+    if (!file) {
+
+        alert("Please select a traffic video.");
+
+        return;
+
+    }
+
+    $("videoButton").disabled = true;
+
+    $("videoMessage").textContent =
+        "Uploading and analyzing video. Please wait...";
+
+    $("videoStats").innerHTML = "";
+
+    $("vehicleClasses").innerHTML = "";
+
+    $("videoReport").textContent = "";
+
+    $("videoOutput").classList.add("hidden");
+
+    const formData = new FormData();
+
+    formData.append("file", file);
+
+    try {
+
+        const response = await fetch(API + "/analyze-video/", {
+
+            method: "POST",
+
+            body: formData
+
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+
+            throw new Error(data.detail || "Video analysis failed");
+
+        }
+
+        // PROCESSED VIDEO
+
+        $("videoOutput").src =
+            API + data.processed_video + "?t=" + Date.now();
+
+        $("videoOutput").classList.remove("hidden");
+
+        $("videoOutput").load();
+
+
+        // VIDEO STATISTICS
+
+        displayStats("videoStats", [
+
+            ["Average Vehicles",
+                data.vehicle_count_average],
+
+            ["Maximum Vehicles",
+                data.maximum_vehicle_count],
+
+            ["Traffic Density",
+                data.density],
+
+            ["Congestion",
+                data.congestion],
+
+            ["Average Speed",
+                data.average_estimated_speed_kmh == null
+                ? null
+                : data.average_estimated_speed_kmh + " km/h"],
+
+            ["Waiting Time",
+                data.estimated_waiting_time_seconds == null
+                ? null
+                : data.estimated_waiting_time_seconds + " sec"],
+
+            ["Total Frames",
+                data.frames_processed],
+
+            ["Frames Analyzed",
+                data.frames_analyzed_by_yolo],
+
+            ["Traffic Signal",
+                data.traffic_signal_status]
+
+        ]);
+
+
+        // VEHICLE CLASSIFICATION
+
+        const classes = data.vehicle_detections_by_class || {};
+
+        const entries = Object.entries(classes);
+
+        if (entries.length === 0) {
+
+            $("vehicleClasses").textContent =
+                "No vehicles detected.";
+
+        } else {
+
+            entries.forEach(([name, count]) => {
+
+                const row = document.createElement("div");
+
+                row.className = "class-row";
+
+                const label = document.createElement("span");
+
+                label.textContent = name;
+
+                const value = document.createElement("strong");
+
+                value.textContent = count;
+
+                row.appendChild(label);
+
+                row.appendChild(value);
+
+                $("vehicleClasses").appendChild(row);
+
+            });
+
+        }
+
+
+        // FULL REPORT
+
+        $("videoReport").textContent =
+
+            (data.congestion_alert || "") +
+
+            "\n\nCalibration information:\n" +
+
+            (data.calibration_note || "Not provided") +
+
+            "\n\nComplete analysis report:\n" +
+
+            JSON.stringify(data, null, 2);
+
+
+        $("videoMessage").textContent =
+            "Video analysis completed successfully.";
+
+    } catch (error) {
+
+        $("videoMessage").textContent =
+            "Video analysis failed: " + error.message;
+
+    } finally {
+
+        $("videoButton").disabled = false;
+
+    }
+
+}
+
+
+// CAMERA CAPTURE
+
+async function captureCamera() {
+
+    try {
+
+        const response = await fetch(
+            API + "/camera/capture",
+            { method: "POST" }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+
+            throw new Error(data.detail || "Camera capture failed");
+
+        }
+
+        $("cameraReport").textContent =
+            JSON.stringify(data, null, 2);
+
+    } catch (error) {
+
+        $("cameraReport").textContent =
+            "Camera error: " + error.message;
+
+    }
+
+}
+
+
+// INITIALIZE
+
+checkBackend();
+
+setInterval(checkBackend, 5000);
+
+</script>
+
+</body>
+</html>
+```
